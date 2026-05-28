@@ -1,0 +1,19 @@
+import os
+
+TELEGRAM_TOKEN   = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
+POCKET_SSID      = os.environ.get("POCKET_OPTION_SSID", "")
+PORT             = int(os.environ.get("PORT", "8080"))
+
+DEFAULT_AMOUNT        = 1.0
+DEFAULT_DURATION      = 60
+DEFAULT_CURRENCIES    = ["EURUSD_otc", "GBPUSD_otc", "USDJPY_otc", "BTCUSD_otc", "XAUUSD_otc"]
+MIN_WIN_RATE          = 70.0
+DAILY_PROFIT_LIMIT    = 20.0
+DAILY_LOSS_LIMIT      = -10.0
+MARTINGALE_MULTIPLIER = 2.0
+MAX_MARTINGALE_STEPS  = 3
+NEWS_PAUSE_BEFORE_MIN = 5
+NEWS_PAUSE_AFTER_MIN  = 5
+ANALYSIS_INTERVAL_SEC = 30
+WS_URL = f"wss://api.po.market/socket.io/?EIO=4&transport=websocket&ssid={POCKET_SSID}"
