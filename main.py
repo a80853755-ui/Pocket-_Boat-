@@ -1,44 +1,24 @@
-"""
-بوت تداول Pocket Option — Python
-التحكم الكامل من تيليجرام
-"""
-
-import asyncio
+import os
 import logging
-import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
-import json
+from telegram import Update
+from telegram.ext import Application, CommandHandler, ContextTypes
 
-import config
-from pocket_option import po_client
-from engine import run_cycle, on_trade_result, set_telegram_sender
-from telegram_bot import build_app, send_message
-from trade_logger import log_event
-
-# ── Logging ────────────────────────────────────────────────────────────────
+# Enable logging
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%H:%M:%S",
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
 )
-log = logging.getLogger("main")
 
+# Get token from environment variable
+TOKEN = os.environ.get('TOKEN')
 
-# ── Health Server ─────────────────────────────────────────────────────────
-class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        from state import state
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text('البوت شغال ✅')
 
-        if self.path in ("/api/healthz", "/healthz", "/"):
-            body = json.dumps(
-                {
-                    "status": "ok",
-                    "running": state.is_running,
-                    "paused": state.is_paused,
-                    "connected": po_client.is_connected(),
-                    "daily_profit": state.stats.profit,
-                    "win_rate": state.stats.win_rate,
-                    "trades_today": state.stats.total,
-                }
-            ).encode()
-            self.send_response(200)
+def main():
+    app = Application.builder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.run_polling()
+
+if __name__ == '__main__':
+    main()
