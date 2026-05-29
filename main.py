@@ -1,16 +1,24 @@
 import os
 import sys
 
-# تثبيت المكتبات الناقصة تلقائياً لضمان عدم توقف البوت في Replit
+# --- نظام التثبيت التلقائي الذكي للمكتبات الناقصة ---
 try:
     import matplotlib
     import sklearn
     import numpy
 except ImportError:
-    print("⏳ جاري تثبيت المكتبات الناقصة... انتظر لحظة")
+    print("⏳ جاري تثبيت مكتبة الشارتات والذكاء الاصطناعي تلقائياً...")
     os.system('pip install matplotlib scikit-learn numpy')
-    print("✅ تم التثبيت بنجاح! أعد تشغيل البوت الآن.")
-    sys.exit(1) # يوقف التشغيل الحالي لمرة واحدة حتى تعمل الحزم بعد التثبيت
+    print("✅ تم التثبيت بنجاح! أعد ضغط زر Run (التشغيل) الآن.")
+    sys.exit()
+# --------------------------------------------------
+
+# بقية أسطر الـ import الطبيعية للكود
+import requests
+import time
+from datetime import datetime, timedelta
+import matplotlib.pyplot as plt
+import io
 
 import requests
 import time
