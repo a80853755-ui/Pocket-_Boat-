@@ -1,4 +1,4 @@
-import os
+8import os
 import asyncio
 import requests
 import pandas as pd
@@ -32,7 +32,7 @@ async def get_candles(symbol, interval="1min", outputsize=100):
         return df
     except: return None
 
-def def check_confirmed_patterns(df):
+def check_confirmed_patterns(df):
     """
     ترجع: direction, score, pattern_name
     لازم آخر 3 شموع موجودة: [-3] إشارة, [-2] تأكيد, [-1] الشمعة اللي توها قفلت
