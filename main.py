@@ -7,7 +7,332 @@ import ta
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler
+import requests
+import time
+from datetime import datetime, timedelta
 
+TOKEN = ""
+
+PAIRS = [
+    "EUR/USD OTC", "GBP/USD OTC", "USD/JPY OTC", "AUD/USD OTC",
+    "USD/CAD OTC", "EUR/JPY OTC", "GBP/JPY OTC", "EUR/GBP OTC",
+    "AUD/JPY OTC", "NZD/USD OTC", "USD/CHF OTC", "EUR/AUD OTC"
+]
+
+last_signal = {}
+
+# === الإعدادات ===
+COOLDOWN_MINUTES = 3
+RSI_BUY_MAX = 75
+RSI_SELL_MIN = 25
+ENTRY_DELAY_SECONDS = 60
+TRADE_DURATION_MINUTES = 1
+MIN_PATTERN_STRENGTH = 0.15
+# ===================
+
+session_count = 0
+SUMMARY_EVERY_SESSIONS = 6
+
+summary = {
+    "total_signals": 0, "buy_signals": 0, "sell_signals": 0,
+    "strong_signals": 0, "medium_signals": 0, "weak_signals": 0,
+    "active_pairs": {}, "active_members": set(), "yesterday_signals": 0
+}
+
+def get_chat_id():
+    url = f"https://api.telegram.org/bot{TOKEN}/getUpdates"
+    try:
+        res = requests.get(url, timeout=10).json()
+        if res["ok"] and res["result"]:
+            return res["result"][-1]["message"]["chat"]["id"]
+    except: return None
+
+CHAT_ID = get_chat_id()
+
+def send(msg):
+    if not CHAT_ID: return
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    data = {"chat_id": CHAT_ID, "text": msg, "parse_mode": "HTML"}
+    requests.post(url, data=data)
+
+def update_summary(direction, pair, strength, member_id):
+    summary["total_signals"] += 1
+    if direction == "شراء": summary["buy_signals"] += 1
+    else: summary["sell_signals"] += 1
+    if strength == "قوية": summary["strong_signals"] += 1
+    elif strength == "متوسطة": summary["medium_signals"] += 1
+    else: summary["weak_signals"] += 1
+    if pair not in summary["active_pairs"]: summary["active_pairs"][pair] = 0
+    summary["active_pairs"][pair] += 1
+    summary["active_members"].add(member_id)
+
+def send_summary():
+    if summary["total_signals"] == 0: return
+    diff = summary["total_signals"] - summary["yesterday_signals"]
+    top_pairs = sorted(summary["active_pairs"].items(), key=lambda x: x[1], reverse=True)[:3]
+    msg = f"""📋 ملخص الأداء - آخر {SUMMARY_EVERY_SESSIONS} جلسات
+📅 {datetime.now().strftime("%A، %d %B %Y")}
+🕐 {datetime.now().strftime("%H:%M")}
+━━━━━━━━━━━━━━━━━━━━━━
+📊 الإجمالي: {summary["total_signals"]} {'↑' if diff > 0 else '↓'} {abs(diff)}
+🟢 شراء: {summary["buy_signals"]} | 🔴 بيع: {summary["sell_signals"]}
+⚡ القوة: 🔥 {summary["strong_signals"]} | 🟡 {summary["medium_signals"]} | ⚪ {summary["weak_signals"]}
+🏆 الأكثر نشاطاً:
+"""
+    for i, (pair, count) in enumerate(top_pairs):
+        medal = ['🥇', '🥈', '🥉'][i]
+        msg += f"{medal} {pair} — {count}\n"
+    msg += f"━━━━━━━━━━━━━━━━━━━━━━\n👥 أعضاء: {len(summary['active_members'])} | أزواج: {len(summary['active_pairs'])}"
+    send(msg)
+    summary.update({"yesterday_signals": summary["total_signals"], "total_signals": 0,
+                   "buy_signals": 0, "sell_signals": 0, "strong_signals": 0,
+                   "medium_signals": 0, "weak_signals": 0, "active_pairs": {}, "active_members": set()})
+
+def get_candles(pair):
+    symbol = pair.replace(" OTC", "").replace("/", "") + "=X"
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1m&range=1d"
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        res = requests.get(url, headers=headers, timeout=10).json()
+        q = res['chart']['result'][0]['indicators']['quote'][0]
+        data = []
+        for i in range(len(q['close'])):
+            if all([q['open'][i], q['high'][i], q['low'][i], q['close'][i]]):
+                data.append({'o': q['open'][i], 'h': q['high'][i], 'l': q['low'][i], 'c': q['close'][i]})
+        data = data[-50:]
+        print(f"Yahoo {pair}: {data[-1]['c']:.5f} | {len(data)} شمعة")
+        return data
+    except Exception as e:
+        print(f"Yahoo {pair}: {e}")
+        return None
+
+def calc_rsi(closes, period=14):
+    if len(closes) < period + 1: return 50
+    gains = [max(0, closes[i] - closes[i-1]) for i in range(1, len(closes))]
+    losses = [max(0, closes[i-1] - closes[i]) for i in range(1, len(closes))]
+    avg_gain = sum(gains[-period:]) / period
+    avg_loss = sum(losses[-period:]) / period
+    if avg_loss == 0: return 100
+    rs = avg_gain / avg_loss
+    return 100 - (100 / (1 + rs))
+
+def candle_stats(c):
+    body = abs(c['c'] - c['o'])
+    total = c['h'] - c['l']
+    if total == 0: return 0, 0, 0, 0
+    upper = c['h'] - max(c['c'], c['o'])
+    lower = min(c['c'], c['o']) - c['l']
+    return body, upper, lower, total
+
+def check_all_patterns(data):
+    if len(data) < 25: return None, None, 0, "ضعيفة"
+
+    closes = [d['c'] for d in data]
+    support = min(closes[-20:-5])
+    resistance = max(closes[-20:-5])
+    c0, c1, c2, c3 = data[-1], data[-2], data[-3], data[-4]
+
+    b0, u0, l0, t0 = candle_stats(c0)
+    b1, u1, l1, t1 = candle_stats(c1)
+    b2, u2, l2, t2 = candle_stats(c2)
+    b3, u3, l3, t3 = candle_stats(c3)
+
+    # ========== أنماط الشراء ==========
+
+    # 1. ابتلاع صاعد + تأكيد
+    if (c2['c'] < c2['o'] and c1['c'] > c1['o'] and c1['c'] > c2['o'] and c1['o'] < c2['c'] and
+        c2['l'] <= support * 1.008 and c0['c'] > c1['h']):
+        strength = ((c0['c'] - support) / support) * 100
+        if strength >= MIN_PATTERN_STRENGTH:
+            return "شراء", f"ابتلاع صاعد مؤكد | {strength:.2f}%", support, "قوية"
+
+    # 2. مطرقة Hammer
+    if (l1 > b1 * 2 and u1 < b1 * 0.3 and c1['l'] <= support * 1.008 and c0['c'] > c1['h']):
+        strength = ((c0['c'] - c1['l']) / c1['l']) * 100
+        return "شراء", f"مطرقة مؤكدة | {strength:.2f}%", support, "قوية"
+
+    # 3. مطرقة مقلوبة Inverted Hammer
+    if (u1 > b1 * 2 and l1 < b1 * 0.3 and c1['l'] <= support * 1.008 and c0['c'] > c1['h']):
+        strength = ((c0['c'] - support) / support) * 100
+        return "شراء", f"مطرقة مقلوبة | {strength:.2f}%", support, "متوسطة"
+
+    # 4. نجمة الصباح Morning Star
+    if (c3['c'] < c3['o'] and b2 < t2 * 0.3 and c1['c'] > c1['o'] and
+        c1['c'] > (c3['o'] + c3['c'])/2 and c0['c'] > c1['h']):
+        strength = ((c0['c'] - c2['l']) / c2['l']) * 100
+        return "شراء", f"نجمة الصباح | {strength:.2f}%", c2['l'], "قوية"
+
+    # 5. هرامي صاعد
+    if (c2['c'] < c2['o'] and c1['c'] > c1['o'] and c1['o'] > c2['c'] and c1['c'] < c2['o'] and
+        c0['c'] > c2['o']):
+        strength = ((c0['c'] - c2['l']) / c2['l']) * 100
+        return "شراء", f"هرامي صاعد | {strength:.2f}%", c2['l'], "متوسطة"
+
+    # 6. ثلاث جنود بيض
+    if (c2['c'] > c2['o'] and c1['c'] > c1['o'] and c0['c'] > c0['o'] and
+        c1['o'] > c2['o'] and c0['o'] > c1['o'] and c2['l'] <= support * 1.008):
+        strength = ((c0['c'] - c2['o']) / c2['o']) * 100
+        return "شراء", f"ثلاث جنود | {strength:.2f}%", support, "قوية"
+
+    # 7. دوجي دراجون فلاي + تأكيد
+    if (b1 < t1 * 0.1 and l1 > t1 * 0.7 and u1 < t1 * 0.1 and
+        c1['l'] <= support * 1.008 and c0['c'] > c1['o']):
+        strength = ((c0['c'] - c1['l']) / c1['l']) * 100
+        return "شراء", f"دوجي دراجون فلاي | {strength:.2f}%", support, "متوسطة"
+
+    # 8. ملقط القاع Tweezers Bottom
+    if (abs(c2['l'] - c1['l']) < c1['c'] * 0.0005 and c2['c'] < c2['o'] and c1['c'] > c1['o'] and
+        c0['c'] > max(c2['o'], c1['c'])):
+        strength = ((c0['c'] - c1['l']) / c1['l']) * 100
+        return "شراء", f"ملقط قاع | {strength:.2f}%", c1['l'], "متوسطة"
+
+    # 9. اختراق مقاومة + إعادة اختبار
+    if (c2['c'] > resistance and c1['l'] <= resistance * 1.002 and c1['l'] >= resistance * 0.998 and
+        c0['c'] > c1['h']):
+        strength = ((c0['c'] - resistance) / resistance) * 100
+        return "شراء", f"اختراق مقاومة | {strength:.2f}%", resistance, "قوية"
+
+    # ========== أنماط البيع ==========
+
+    # 1. ابتلاع هابط + تأكيد
+    if (c2['c'] > c2['o'] and c1['c'] < c1['o'] and c1['c'] < c2['o'] and c1['o'] > c2['c'] and
+        c2['h'] >= resistance * 0.992 and c0['c'] < c1['l']):
+        strength = ((resistance - c0['c']) / resistance) * 100
+        if strength >= MIN_PATTERN_STRENGTH:
+            return "بيع", f"ابتلاع هابط مؤكد | {strength:.2f}%", resistance, "قوية"
+
+    # 2. شهاب Shooting Star
+    if (u1 > b1 * 2 and l1 < b1 * 0.3 and c1['h'] >= resistance * 0.992 and c0['c'] < c1['l']):
+        strength = ((c1['h'] - c0['c']) / c1['h']) * 100
+        return "بيع", f"شهاب مؤكد | {strength:.2f}%", resistance, "قوية"
+
+    # 3. الرجل المشنوق Hanging Man
+    if (l1 > b1 * 2 and u1 < b1 * 0.3 and c1['h'] >= resistance * 0.992 and c0['c'] < c1['l']):
+        strength = ((resistance - c0['c']) / resistance) * 100
+        return "بيع", f"رجل مشنوق | {strength:.2f}%", resistance, "متوسطة"
+
+    # 4. نجمة المساء Evening Star
+    if (c3['c'] > c3['o'] and b2 < t2 * 0.3 and c1['c'] < c1['o'] and
+        c1['c'] < (c3['o'] + c3['c'])/2 and c0['c'] < c1['l']):
+        strength = ((c2['h'] - c0['c']) / c2['h']) * 100
+        return "بيع", f"نجمة المساء | {strength:.2f}%", c2['h'], "قوية"
+
+    # 5. هرامي هابط
+    if (c2['c'] > c2['o'] and c1['c'] < c1['o'] and c1['o'] < c2['c'] and c1['c'] > c2['o'] and
+        c0['c'] < c2['o']):
+        strength = ((c2['h'] - c0['c']) / c2['h']) * 100
+        return "بيع", f"هرامي هابط | {strength:.2f}%", c2['h'], "متوسطة"
+
+    # 6. ثلاث غربان سود
+    if (c2['c'] < c2['o'] and c1['c'] < c1['o'] and c0['c'] < c0['o'] and
+        c1['o'] < c2['o'] and c0['o'] < c1['o'] and c2['h'] >= resistance * 0.992):
+        strength = ((c2['o'] - c0['c']) / c2['o']) * 100
+        return "بيع", f"ثلاث غربان | {strength:.2f}%", resistance, "قوية"
+
+    # 7. دوجي جريفستون + تأكيد
+    if (b1 < t1 * 0.1 and u1 > t1 * 0.7 and l1 < t1 * 0.1 and
+        c1['h'] >= resistance * 0.992 and c0['c'] < c1['o']):
+        strength = ((c1['h'] - c0['c']) / c1['h']) * 100
+        return "بيع", f"دوجي جريفستون | {strength:.2f}%", resistance, "متوسطة"
+
+    # 8. ملقط القمة Tweezers Top
+    if (abs(c2['h'] - c1['h']) < c1['c'] * 0.0005 and c2['c'] > c2['o'] and c1['c'] < c1['o'] and
+        c0['c'] < min(c2['o'], c1['c'])):
+        strength = ((c1['h'] - c0['c']) / c1['h']) * 100
+        return "بيع", f"ملقط قمة | {strength:.2f}%", c1['h'], "متوسطة"
+
+    # 9. كسر دعم + إعادة اختبار
+    if (c2['c'] < support and c1['h'] >= support * 0.998 and c1['h'] <= support * 1.002 and
+        c0['c'] < c1['l']):
+        strength = ((support - c0['c']) / support) * 100
+        return "بيع", f"كسر دعم | {strength:.2f}%", support, "قوية"
+
+    return None, None, 0, "ضعيفة"
+
+def check(pair):
+    data = get_candles(pair)
+    if not data or len(data) < 20: return None
+
+    closes = [d['c'] for d in data]
+    ma3 = sum(closes[-3:]) / 3
+    ma10 = sum(closes[-10:]) / 10
+    prev_ma3 = sum(closes[-4:-1]) / 3
+    prev_ma10 = sum(closes[-11:-1]) / 10
+    rsi = calc_rsi(closes)
+
+    print(f"{pair}: MA3={ma3:.5f} | MA10={ma10:.5f} | RSI={rsi:.1f}")
+
+    direction, pattern_name, level, strength_level = check_all_patterns(data)
+    if not direction: return None
+
+    buy_ok = (direction == "شراء" and prev_ma3 < prev_ma10 and ma3 > ma10 and rsi <= RSI_BUY_MAX)
+    sell_ok = (direction == "بيع" and prev_ma3 > prev_ma10 and ma3 < ma10 and rsi >= RSI_SELL_MIN)
+
+    if not buy_ok and not sell_ok:
+        print(f"{pair}: {direction} مرفوض - الموفنج/RSI ما أكد")
+        return None
+
+    arrow = "⬆️" if direction == "شراء" else "⬇️"
+    level_name = "الدعم" if direction == "شراء" else "المقاومة"
+
+    print(f"✅ {direction}: {pattern_name} | {strength_level}")
+    return direction, arrow, rsi, pattern_name, level, level_name, strength_level
+
+if CHAT_ID:
+    pairs_list = "\n".join([f"• {p}" for p in PAIRS])
+    send(f"""🚀🚀 <b>البوت V3 اشتغل</b> 🚀🚀
+<b>بوت ابو ركان - نسخة الأنماط الكاملة</b>
+
+<b>الأزواج 12:</b>
+{pairs_list}
+
+📊 <b>البيانات:</b> Yahoo 1d فقط
+📐 <b>الأنماط:</b> 18 نمط مع تأكيدات
+- ابتلاع، مطرقة، شهاب، نجمة الصباح/المساء
+- هرامي، دوجي، 3 جنود/غربان، ملقط
+- اختراق/كسر دعم ومقاومة
+⏱️ <b>المعاملة:</b> {TRADE_DURATION_MINUTES} دقيقة
+⏳ <b>الدخول:</b> بعد {ENTRY_DELAY_SECONDS} ثانية
+🎯 <b>أقل قوة:</b> {MIN_PATTERN_STRENGTH}%""")
+else:
+    print("ارسل /start للبوت أول")
+
+while True:
+    if not CHAT_ID:
+        CHAT_ID = get_chat_id()
+        time.sleep(5)
+        continue
+
+    for pair in PAIRS:
+        if pair in last_signal and time.time() - last_signal[pair] < COOLDOWN_MINUTES * 60:
+            continue
+
+        result = check(pair)
+        if result:
+            direction, arrow, rsi, pattern, level, level_name, strength = result
+            entry_time = (datetime.now() + timedelta(seconds=ENTRY_DELAY_SECONDS)).strftime("%H:%M:%S")
+            update_summary(direction, pair, strength, CHAT_ID)
+
+            strength_emoji = "🔥" if strength == "قوية" else "🟡" if strength == "متوسطة" else "⚪"
+            msg = f"""❗️ <b>اضبط المؤقت 00:01:00</b> ❗️
+
+📊 <b>Yahoo 1d</b> | {strength_emoji} <b>{strength}</b>
+زوج <b>{pair}</b>
+<b>{direction} {arrow}</b> | RSI: {rsi:.1f}
+📐 <b>{pattern}</b>
+📍 {level_name}: <b>{level:.5f}</b>
+⏱️ المعاملة: <b>{TRADE_DURATION_MINUTES} دقيقة</b>
+🕐 الدخول: <b>{entry_time}</b>
+<b>ادخل بعد {ENTRY_DELAY_SECONDS} ثانية</b>"""
+            send(msg)
+            last_signal[pair] = time.time()
+        time.sleep(2)
+
+    session_count += 1
+    print(f"--- دورة {session_count} انتهت ---")
+    if session_count % SUMMARY_EVERY_SESSIONS == 0:
+        send_summary()
+    time.sleep(15)
 TOKEN = os.getenv("TOKEN")
 TWELVE_API = os.getenv("TWELVE_API_KEY")
 CHAT_ID = os.getenv("CHAT_ID")
