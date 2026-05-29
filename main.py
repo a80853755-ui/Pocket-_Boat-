@@ -11,7 +11,7 @@ import requests
 import time
 from datetime import datetime, timedelta
 
-TOKEN = "8689411223:AAFX-m5Kqv2NYeBHIojHmFArD10ZjfrxwCU"
+TOKEN = ""
 
 PAIRS = [
     "EUR/USD OTC", "GBP/USD OTC", "USD/JPY OTC", "AUD/USD OTC",
