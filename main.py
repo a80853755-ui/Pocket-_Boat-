@@ -120,32 +120,32 @@ def calc_ai_score(df):
     score = candle_score
     curr = df.iloc[-2]  # شمعة التأكيد
     prev = df.iloc[-3]  # شمعة الإشارة
-    # ... باقي الكود زي ما هو
-    return "CALL", 30, "Bullish Engulfing مؤكد"  # هذا شراء
-return "PUT", 30, "Bearish Engulfing مؤكد"   # وهذا بيع
-      # 9. Morning Star - شراء CALL ⬆️
-    # شمعة 1: حمراء طويلة, شمعة 2: دوجي/صغيرة قاب, شمعة 3: خضراء تقفل فوق نص شمعة 1
+    #     # 9. Morning Star - شراء CALL ⬆️
     c1_body = abs(c1['close'] - c1['open'])
     c2_body = abs(c2['close'] - c2['open'])
-    c3_body = abs(df.iloc[-1]['close'] - df.iloc[-1]['open'])  # الشمعة الثالثة
     
     if c1['close'] < c1['open'] and c1_body > df['close'].rolling(10).std().iloc[-3] and \
        c2_body < c1_body * 0.3 and \
        c2['high'] < c1['low'] and \
-       df.iloc[-1]['close'] > df.iloc[-1]['open'] and \
-       df.iloc[-1]['close'] > (c1['open'] + c1['close']) / 2:
+       c3['close'] > c3['open'] and \
+       c3['close'] > (c1['open'] + c1['close']) / 2:
         return "CALL", 35, "Morning Star مؤكد"
     
     # 10. Evening Star - بيع PUT ⬇️
-    # شمعة 1: خضراء طويلة, شمعة 2: دوجي/صغيرة قاب, شمعة 3: حمراء تقفل تحت نص شمعة 1
     if c1['close'] > c1['open'] and c1_body > df['close'].rolling(10).std().iloc[-3] and \
        c2_body < c1_body * 0.3 and \
        c2['low'] > c1['high'] and \
-       df.iloc[-1]['close'] < df.iloc[-1]['open'] and \
-       df.iloc[-1]['close'] < (c1['open'] + c1['close']) / 2:
+       c3['close'] < c3['open'] and \
+       c3['close'] < (c1['open'] + c1['close']) / 2:
         return "PUT", 35, "Evening Star مؤكد"
-return None, 0, ""
 
+    return None, 0, ""
+    ... باقي الكود زي ما هو
+    return "CALL", 30, "Bullish Engulfing مؤكد"  # هذا شراء
+return "PUT", 30, "Bearish Engulfing مؤكد"   # وهذا بيع
+      # 9. Morning Star - شراء CALL ⬆️
+    # شمعة 1: حمراء طويلة, شمعة 2: دوجي/صغيرة قاب, شمعة 3: خضراء تقفل فوق نص شمعة 1
+    
 def calc_ai_score(df):
     if len(df) < 3: return 0, None, 0, 0, []
 
