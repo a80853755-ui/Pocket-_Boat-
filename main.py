@@ -1,12 +1,16 @@
 import os
-# تثبيت المكتبة الذكية تلقائياً إذا لم تكن موجودة في بيئة Replit
+import sys
+
+# تثبيت المكتبات الناقصة تلقائياً لضمان عدم توقف البوت في Replit
 try:
-    from sklearn.ensemble import RandomForestClassifier
-    import numpy as np
+    import matplotlib
+    import sklearn
+    import numpy
 except ImportError:
-    os.system('pip install scikit-learn numpy')
-    from sklearn.ensemble import RandomForestClassifier
-    import numpy as np
+    print("⏳ جاري تثبيت المكتبات الناقصة... انتظر لحظة")
+    os.system('pip install matplotlib scikit-learn numpy')
+    print("✅ تم التثبيت بنجاح! أعد تشغيل البوت الآن.")
+    sys.exit(1) # يوقف التشغيل الحالي لمرة واحدة حتى تعمل الحزم بعد التثبيت
 
 import requests
 import time
