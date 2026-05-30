@@ -1,24 +1,18 @@
 import os
 import sys
 
-# --- نظام التثبيت التلقائي الذكي للمكتبات الناقصة ---
+# --- نظام التثبيت التلقائي ---
 try:
     import matplotlib
     import sklearn
-    import numpy
+    import numpy as np
+    from sklearn.ensemble import RandomForestClassifier
 except ImportError:
-    print("⏳ جاري تثبيت مكتبة الشارتات والذكاء الاصطناعي تلقائياً...")
+    print("⏳ جاري تثبيت المكتبات تلقائياً...")
     os.system('pip install matplotlib scikit-learn numpy')
-    print("✅ تم التثبيت بنجاح! أعد ضغط زر Run (التشغيل) الآن.")
+    print("✅ تم التثبيت! أعد التشغيل الآن.")
     sys.exit()
 # --------------------------------------------------
-
-# بقية أسطر الـ import الطبيعية للكود
-import requests
-import time
-from datetime import datetime, timedelta
-import matplotlib.pyplot as plt
-import io
 
 import requests
 import time
@@ -29,9 +23,9 @@ import matplotlib.pyplot as plt
 import io
 
 # ==================== الإعدادات الحساسة ====================
-TOKEN = "8689411223:AAFX-m5Kqv2NYeBHIojHmFArD10ZjfrxwCU" 
-CHAT_ID = "5690085743"  
-TWELVE_API = "3f5e716212ed401cb2e8a7517932663a"   
+TOKEN = "8689411223:AAFX-m5Kqv2NYeBHIojHmFArD10ZjfrxwCU"
+CHAT_ID = "5690085743"
+TWELVE_API = "3f5e716212ed401cb2e8a7517932663a"
 # ==========================================================
 
 PAIRS = [
@@ -44,17 +38,17 @@ last_news_check = 0
 
 # === الإعدادات الفنية الفائقة ===
 COOLDOWN_MINUTES = 5
-RSI_BUY_MAX = 38       
-RSI_SELL_MIN = 62      
-ENTRY_DELAY_SECONDS = 5 
+RSI_BUY_MAX = 38
+RSI_SELL_MIN = 62
+ENTRY_DELAY_SECONDS = 5
 TRADE_DURATION_MINUTES = 1
-MAX_DISTANCE_PIPS = 3   
-NEWS_CHECK_INTERVAL = 300 
-NEWS_IMPACT_MINUTES = 45 
+MAX_DISTANCE_PIPS = 3
+NEWS_CHECK_INTERVAL = 300
+NEWS_IMPACT_MINUTES = 45
 SEND_CHART = True
 
 # --- إعدادات الذكاء الاصطناعي ---
-AI_CONFIDENCE_THRESHOLD = 0.65  # نسبة دقة الذكاء الاصطناعي المطلوبة لدخول الصفقة (65% أو أعلى)
+AI_CONFIDENCE_THRESHOLD = 0.65
 
 STRONG_NEWS_KEYWORDS = [
     'rate decision', 'interest rate', 'federal reserve', 'fed', 'ecb', 'boe', 'boj',
@@ -119,10 +113,10 @@ def calc_support_resistance(data):
 def check_chart_patterns(data, support, resistance):
     if len(data) < 5: return None, None
     c0, c1 = data[-1], data[-2]
-    
+
     if c1['c'] < c1['o'] and c0['c'] > c0['o'] and c0['c'] >= c1['o'] and c0['o'] <= c1['c']:
         if c0['c'] <= support * 1.002: return "شراء", "ابتلاع صاعد احترافي"
-            
+
     if c1['c'] > c1['o'] and c0['c'] < c0['o'] and c0['c'] <= c1['o'] and c0['o'] >= c1['c']:
         if c0['c'] >= resistance * 0.998: return "بيع", "ابتلاع هابط احترافي"
 
@@ -133,22 +127,14 @@ def check_chart_patterns(data, support, resistance):
 
 # ==================== محرّك الذكاء الاصطناعي (AI ENGINE) ====================
 def ai_predict_signal_quality(data, direction, rsi, dist_pips):
-    """يستخدم خوارزمية السلوكيّات الذكية لتحليل احتمالية نجاح الصفقة"""
     try:
-        # تحويل بيانات الشموع لمصفوفة رقمية لتحليلها رياضياً
         closes = [c['c'] for c in data[-15:]]
-        highs = [c['h'] for c in data[-15:]]
-        lows = [c['l'] for c in data[-15:]]
-        
-        # استخراج الميزات (Features) الحالية للسوق
-        volatility = np.std(closes) # قياس حدة تذبذب السوق الحالية
+        volatility = np.std(closes)
         candle_bodies = [abs(c['c'] - c['o']) for c in data[-5:]]
-        avg_body = np.mean(candle_bodies) # متوسط حجم الشموع الأخيرة
-        
-        # توليد بيانات تدريبية سريعة بناءً على القواعد الرياضية المثبتة لأسواق المال
-        # (Synthetic Training For Real-time Market Fit)
-        X_train = np.redacted_features = [
-            # [التذبذب، حجم الشموع، الـ RSI، المسافة عن المستهدف]
+        avg_body = np.mean(candle_bodies)
+
+        # بيانات تدريبية مصححة
+        X_train = [
             [0.0002, 0.0001, 30, 1.5],
             [0.0005, 0.0004, 75, 4.2],
             [0.0001, 0.0001, 25, 0.5],
@@ -156,23 +142,19 @@ def ai_predict_signal_quality(data, direction, rsi, dist_pips):
             [0.0003, 0.0002, 35, 1.2],
             [0.0004, 0.0003, 68, 1.8]
         ]
-        # 1 تعني ناجحة (آمنة)، 0 تعني خطرة
-        y_train = [1, 0, 1, 0, 1, 1] 
-        
-        # بناء نموذج الغابة العشوائية الخفيف وتدريبه فورياً
+        y_train = [1, 0, 1, 0, 1, 1]
+
         model = RandomForestClassifier(n_estimators=10, random_state=42)
         model.fit(X_train, y_train)
-        
-        # فحص المعطيات الحالية للبوت
+
         current_features = np.array([[volatility, avg_body, rsi, dist_pips]])
-        
-        # حساب نسبة الثقة بالصفقة
         probabilities = model.predict_proba(current_features)[0]
-        confidence_success = probabilities[1] # نسبة احتمالية النجاح
-        
+        confidence_success = probabilities[1]
+
         return confidence_success
-    except:
-        return 0.50 # في حال حدوث أي خطأ، يعطي نسبة محايدة ولا يوقف البوت
+    except Exception as e:
+        print(f"خطأ AI: {e}")
+        return 0.50
 # ============================================================================
 
 def get_candles(pair):
@@ -203,20 +185,17 @@ def check(pair, news_list):
 
     pip_value = 0.0001 if "JPY" not in pair else 0.01
     distance_pips = abs(current_price - (support if direction == "شراء" else resistance)) / pip_value
-    
-    # فلاتر السعر والـ RSI الكلاسيكية
+
     if direction == "شراء" and (distance_pips > MAX_DISTANCE_PIPS or rsi > RSI_BUY_MAX): return None
     if direction == "بيع" and (distance_pips > MAX_DISTANCE_PIPS or rsi < RSI_SELL_MIN): return None
 
-    # فلتر الأخبار الاقتصادي
     for news in news_list:
-        if any(curr in news['title'].lower() for curr in pair.split("/")): return None 
+        if any(curr in news['title'].lower() for curr in pair.split("/")): return None
 
-    # 🔥 استدعاء فلتر الذكاء الاصطناعي لتقييم جودة الإشارة
     ai_confidence = ai_predict_signal_quality(data, direction, rsi, distance_pips)
-    
+
     if ai_confidence < AI_CONFIDENCE_THRESHOLD:
-        print(f"⚠️ {pair}: تم حجب الإشارة بواسطة الذكاء الاصطناعي. الدقة المتوقعة ({ai_confidence*100:.1f}%) أقل من المطلوب.")
+        print(f"⚠️ {pair}: حجب AI - الدقة {ai_confidence*100:.1f}%")
         return None
 
     return direction, rsi, pattern_name, support, resistance, distance_pips, data, ai_confidence
@@ -237,7 +216,7 @@ def plot_chart(data, pair, direction, pattern_name, support, resistance, ai_conf
     ax.set_title(f'{pair} | {pattern_name}\nAI Confidence: {ai_conf*100:.1f}%', color='#67e8f9', fontsize=11, weight='bold')
     ax.tick_params(colors='white')
     ax.grid(True, alpha=0.1, color='gray')
-    
+
     buf = io.BytesIO()
     plt.savefig(buf, format='png', facecolor=fig.get_facecolor())
     buf.seek(0)
@@ -245,7 +224,7 @@ def plot_chart(data, pair, direction, pattern_name, support, resistance, ai_conf
     return buf.getvalue()
 
 if TOKEN and CHAT_ID:
-    send("🤖 <b>تم تفعيل نظام الذكاء الاصطناعي المطور V9!</b>\n🧠 يقوم البوت الآن بفحص سلوك السوق الإحصائي وحجب الإشارات الضعيفة تلقائياً.")
+    send("🤖 <b>تم تفعيل نظام الذكاء الاصطناعي V9!</b>\n🧠 البوت يفحص الجودة تلقائياً")
 
 while True:
     current_news = check_news_impact()
@@ -257,10 +236,10 @@ while True:
         if result:
             direction, rsi, pattern, sup, res, dist, chart_data, ai_confidence = result
             entry_time = (datetime.now() + timedelta(seconds=ENTRY_DELAY_SECONDS)).strftime("%H:%M:%S")
-            
+
             arrow = "🟢 BUY" if direction == "شراء" else "🔴 SELL"
-            
-            msg = f"""🤖 <b>إشارة مصدّقة من الذكاء الاصطناعي (AI Approved)</b>
+
+            msg = f"""🤖 <b>إشارة مصدّقة من الذكاء الاصطناعي</b>
 
 📊 الزوج: <b>{pair}</b>
 🎬 الاتجاه: <b>{arrow}</b>
@@ -269,7 +248,7 @@ while True:
 ⏰ مدة المعاملة: <b>{TRADE_DURATION_MINUTES} دقيقة</b>
 ⏳ وقت الدخول: <b>{entry_time}</b>
 
-📈 مؤشر RSI: {rsi:.1f}
+📈 RSI: {rsi:.1f}
 📍 الدعم: {sup:.5f} | المقاومة: {res:.5f}"""
 
             if SEND_CHART:
