@@ -23,7 +23,7 @@ import matplotlib.pyplot as plt
 import io
 
 # ==================== الإعدادات الحساسة ====================
-TOKEN = "8689411223:AAFX-m5Kqv2NYeBHIojHmFArD10ZjfrxwCU"
+TOKEN = "8693601571:AAG8wR7YYl171g4VQboV4b5bJmO8Qer8eGc"
 CHAT_ID = "5690085743"
 TWELVE_API = "3f5e716212ed401cb2e8a7517932663a"
 # ==========================================================
