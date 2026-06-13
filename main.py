@@ -2,7 +2,9 @@
 بوت إشارات Pocket Option — يرسل إشارات تيليجرام فقط
 المستخدم يفتح الصفقات يدوياً على Pocket Option
 """
-
+import config
+TOKEN = config.TOKEN"8693601571:AAG8wR7YYl171g4VQboV4b5bJmO8Qer8eGc"
+CHAT_ID = config.CHAT_ID"5690085743"
 import asyncio
 import logging
 import threading
