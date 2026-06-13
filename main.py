@@ -14,8 +14,8 @@ from telegram_bot import build_app, send_message
 from trade_logger import log_event
 
 # قراءة المتغيرات من Railway Variables
-TOKEN = os.getenv("8693601571:AAG8wR7YYl171g4VQboV4b5bJmO8Qer8eGc")
-CHAT_ID = os.getenv("5690085743")
+TOKEN = os.getenv(":")
+CHAT_ID = os.getenv("")
 PORT = int(os.getenv("PORT", 8080))
 
 logging.basicConfig(
