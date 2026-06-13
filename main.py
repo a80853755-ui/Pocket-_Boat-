@@ -2,21 +2,17 @@
 بوت إشارات Pocket Option — يرسل إشارات تيليجرام فقط
 المستخدم يفتح الصفقات يدوياً على Pocket Option
 """
-import os
+
 import asyncio
 import logging
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 
+import config
 from engine import run_cycle, set_telegram_sender
 from telegram_bot import build_app, send_message
 from trade_logger import log_event
-
-# قراءة المتغيرات من Railway Variables
-TOKEN = os.getenv("TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
-PORT = int(os.getenv("PORT", 8080))
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,6 +20,7 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 log = logging.getLogger("main")
+
 
 # ── Health Server ─────────────────────────────────────────────────────────────
 
@@ -48,16 +45,18 @@ class HealthHandler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
+
 def start_health_server():
-    server = HTTPServer(("0.0.0.0", PORT), HealthHandler)
-    log.info(f"Health server على port {PORT}")
+    server = HTTPServer(("0.0.0.0", config.PORT), HealthHandler)
+    log.info(f"Health server على port {config.PORT}")
     threading.Thread(target=server.serve_forever, daemon=True).start()
 
-# ── Main ──────────────────────────────────────
+
+# ── Main ──────────────────────────────────────────────────────────────────────
 
 async def main():
-    if not TOKEN:
-        log.error("❌ TOKEN غير موجود في Railway Variables")
+    if not config.TELEGRAM_TOKEN:
+        log.error("❌ TELEGRAM_BOT_TOKEN غير موجود في Secrets")
         return
 
     start_health_server()
@@ -65,10 +64,13 @@ async def main():
 
     tg_app = build_app()
 
+    # الطريقة الصحيحة لـ python-telegram-bot 20.x مع asyncio
     async with tg_app:
+        # حذف webhook + إغلاق أي polling قديم
         await tg_app.bot.delete_webhook(drop_pending_updates=True)
         log.info("🧹 تم حذف webhook القديم")
 
+        # إجبار إغلاق أي long-poll قديم على سيرفر Telegram
         try:
             await tg_app.bot.get_updates(offset=-1, timeout=0)
             log.info("🔓 تم تحرير الـ polling القديم")
@@ -77,6 +79,7 @@ async def main():
 
         await asyncio.sleep(2)
 
+        # تشغيل البوت
         await tg_app.start()
         await tg_app.updater.start_polling(
             drop_pending_updates=True,
@@ -86,6 +89,7 @@ async def main():
         log_event("bot_started")
         log.info("✅ البوت يستمع — أرسل /start من تيليجرام")
 
+        # شغّل محرك الإشارات (يعمل بشكل متوازٍ مع الـ polling)
         engine_task = asyncio.create_task(run_cycle())
 
         try:
@@ -95,6 +99,7 @@ async def main():
         finally:
             await tg_app.updater.stop()
             await tg_app.stop()
+
 
 if __name__ == "__main__":
     try:
