@@ -1,7 +1,7 @@
 import os
 
-TELEGRAM_TOKEN   = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
+TELEGRAM_TOKEN   = os.environ.get("TELEGRAM_BOT_TOKEN", "8693601571:AAG8wR7YYl171g4VQboV4b5bJmO8Qer8eGc")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "5690085743")
 POCKET_SSID      = os.environ.get("POCKET_OPTION_SSID", "")
 PORT             = int(os.environ.get("PORT", "8080"))
 
